@@ -1,3 +1,4 @@
+include io.inc
 .model small
 .stack
 .data
@@ -13,6 +14,10 @@ led    byte 3fh,06h,5bh,4fh,66h,6dh,7dh,07h,7fh,6fh    ;段码
 ledDENG byte 40h;0100 0000;hgfedcba,40是-
 buf    byte 3,0           ;存放要显示的十位和个位
 bz    word ?           ;位码  ;没用上
+sta   byte 0            ;总状态变量，0普通，1紧急1,2紧急2, 3紧急3，4警告模式
+yellow_sta byte 0          ;控制黄灯显示的状态量
+yellow_bit equ 01001000b;黄灯位码      
+yellow_mask byte 10110111b;黄灯掩码
 N      word 0          ;控制灯显示
 flag   byte 0             ;存放灯状态,有绿灯为0，黄灯非0
 intseg    dw ?           ;存段基地址
@@ -31,7 +36,7 @@ start:
     int 21h
 
     mov   dx,28bh
-    mov   al,88h                ;将8255设为A和C口输出
+    mov   al,88h                ;将8255设为A和B口输出
     out   dx,al           
  
     mov   al,0              ;关掉数码管显示
@@ -81,21 +86,36 @@ start:
 a:
     mov  N,0 
 again:
+
     mov   bx,N
     mov   al,DENG[bx]
    
+    cmp sta, 4
+    jne flash
+    mov al, yellow_bit
+    and al, yellow_mask
+    
+ flash:
+    push ax
+    mov al, sta
+    call dispsib
+    call dispcrlf
+    pop ax
     mov   dx,289h    ;c口
     out   dx,al           ;点亮相应的灯
     cmp   al, 0ffh  ;判断是否是结束状态标识
     jz    a   ;返回到初始灯的状态初值
        ;数码管显示
+    ;判断当前状态，只有普通状态显示数码管
+    cmp sta, 0
+    jne end_tube
     mov   bl,buf      ;bl为要显示的十位数
     mov   bh,0
     mov   al,led[bx]  ;求出对应的led数码
     mov   dx,288h     ;自8255的A口输出（A口数码管）
     out   dx,al
     mov   al,2        ;使左边的数码管亮
-    mov   dx,28ah     ;十位的位码用PC1
+    mov   dx,28ah     ;十位的位码用PB1
     out   dx,al
     call  delay      ;延时
 
@@ -116,24 +136,39 @@ again:
     mov  al,0               ;关掉数码管显示
     mov  dx,28ah
     out  dx,al
+end_tube:
     
     mov  ah,06h   ;控制台输入输出
     mov dl,0ffh  ;选择输入
     int  21h
-    jmp st1
+    jmp st1 
+to_again:
+    jmp again
 
 st1:
     cmp al,13
     jne  st2  ;zf=0跳转       ;enter键按下红灯
     jmp ans1
 
+
 st2: cmp al,49    ;"1"键
     jne st3
     jmp ans2
 st3: cmp al,50     ;"2"键
-     jne again
+     jne st4
      jmp ans3
+
+st4: cmp al,51     ;"3"键
+     jne st5
+     jmp ans4     
+     
+st5:
+    cmp al, 32
+    jne to_again
+    mov sta, 0 ;回到普通状态
+    jmp again
 ans1:;全红灯
+    mov sta, 1 ;设置状态变量
     mov dx,289H
     mov al,90h
     out dx,al
@@ -142,15 +177,14 @@ ans1:;全红灯
     mov dl,0ffh
     int  21h
     cmp al,32
-    jne  a1
-      
+    jne  ans1
+    mov sta, 0
     jmp  again
 
     jmp ans1
-a1:  jmp ans1
-a2:  jmp ans2
-a3: jmp  ans3
+
 ans2:;东西红，南北绿
+    mov sta, 2 ;设置状态变量
     mov dx,289H
     mov al,30h
     out dx,al
@@ -158,11 +192,13 @@ ans2:;东西红，南北绿
     mov dl,0ffh
     int  21h
     cmp al,32
-    jne  a2
+    jne  ans2
+    mov sta, 0 ;回到普通状态
     jmp  again
   
     jmp ans2
 ans3:;东西绿，南北红
+    mov sta, 3 ;设置状态变量
     mov dx,289H
     mov al,84h
     out dx,al
@@ -170,11 +206,21 @@ ans3:;东西绿，南北红
     mov dl,0ffh
     int  21h
     cmp al,32   ;空格键
-    jne  a3
+    mov sta, 0 ;回到普通状态
+
+    jne  ans3
     jmp  again
    
     jmp ans3
-                   
+ans4:;警告模式，黄灯闪烁，蜂鸣器关闭
+    mov sta, 4 ;设置状态变量
+    mov al, 06h
+    mov dl, 0ffh; dos功能调用，getc
+    cmp al, 32
+    jmp again
+    
+    jmp again 
+                      
     ;中断向量设置
     cli;CPU执行清中断标志位指令cli，使IF标志位为0，
     ;CPU不响应中断。
@@ -207,6 +253,9 @@ intproc    proc
     ;
     mov ax,@data
     mov ds,ax
+    ;修改黄灯状态
+    xor yellow_sta, 1
+    xor yellow_mask, yellow_bit
     ;
     cmp flag,0;判断是否是绿灯
     jnz yellow;flag!=0,转去黄灯

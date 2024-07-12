@@ -3,7 +3,7 @@ include io.inc
 .stack
 .data
 ; PA 段码
-; PB 7-2 LED 1-0 扬声器
+; PB 7-2 LED 0 蜂鸣器
 ; PC 上半数字键盘的列 下半位码
 time_green equ 30
 
@@ -25,6 +25,7 @@ yellow_bit equ 01001000b;黄灯位码
 yellow_mask byte 10110111b;黄灯掩码
 N      word 0          ;控制灯显示
 flag   byte 0             ;存放灯状态,有绿灯为0，黄灯非0
+buzzer byte 0            ;控制蜂鸣器，切换到黄灯时会置1，下次一秒中断时置0
 intseg    dw ?           ;存段基地址
 intoff    dw ?           ;存原中断服务程序的偏移地址
 intimr    db ?           ;存中断控制字
@@ -88,6 +89,7 @@ start:
     out   dx,al        ;后写高字节
 
     sti
+    
 a:
     mov  N,0 
 again:
@@ -101,6 +103,7 @@ again:
     
  flash:
     mov   dx,289h    ;c口
+    or    al, buzzer      ;或上蜂鸣器状态
     out   dx,al           ;点亮相应的灯
     cmp   al, 0ffh  ;判断是否是结束状态标识
     jz    a   ;返回到初始灯的状态初值
@@ -125,13 +128,6 @@ disp_tube:
     
     ;南北绿，则东西加6
     mov bx, offset disp_buf
-    
-    mov al, '&'
-    call dispc
-    mov ax, bx
-    call dispsiw
-    call dispcrlf
-    
     mov al, 6
 
     call addbyte
@@ -143,11 +139,6 @@ disp_tube2:
     ;东西绿，则南北加6
     mov bx, offset [disp_buf + 2]
     
-    mov ax, bx
-    mov al, '*'
-    call dispc
-    call dispsiw
-    call dispcrlf
     mov al, 6
     
     call addbyte
@@ -291,6 +282,7 @@ delay    endp
 intproc    proc
     sti
     push ax
+    push dx
     push ds
     ;
     mov ax,@data
@@ -298,7 +290,8 @@ intproc    proc
     ;修改黄灯状态
     xor yellow_sta, 1
     xor yellow_mask, yellow_bit
-    ;
+    ;重置蜂鸣器状态
+    mov buzzer, 0
     cmp flag,0;判断是否是绿灯
     jnz yellow;flag!=0,转去黄灯
     mov al,buf+1    ;flag=0,绿灯，赋值个位
@@ -345,6 +338,12 @@ intp2:    ;al<6
 
 f:
     not flag        ;取反
+    
+    ;切换到黄灯时打开蜂鸣器
+    jne f2
+    mov buzzer, 1
+    
+f2:
     inc light_sta   ;切换灯状态
     cmp light_sta, 4
     jb e
@@ -358,6 +357,7 @@ e:
     ;由于D5为1，8259产生EOI中断结束命令，
     ;使当前服务寄存器ISR对应的D7这一位清零。
     pop ds
+    pop dx
     pop ax
     iret
 intproc endp

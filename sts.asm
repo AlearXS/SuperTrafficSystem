@@ -5,6 +5,9 @@ include io.inc
 ; PA 段码
 ; PB 7-2 LED 1-0 扬声器
 ; PC 上半数字键盘的列 下半位码
+time_green equ 30
+
+
 DENG   db  30h,50h,10h,50h,10h,50h,10h     ;六个灯P7~P5:L7~L5
                     ;P4~P2:L2~L0
        db  84h,88h,80h,88h,80h,88h,80h     ;灯的状态数据
@@ -13,8 +16,10 @@ DENG1   db   90H;出现故障两个方向红灯全亮
 led    byte 3fh,06h,5bh,4fh,66h,6dh,7dh,07h,7fh,6fh    ;段码
 ledDENG byte 40h;0100 0000;hgfedcba,40是-
 buf    byte 3,0           ;存放要显示的十位和个位
+disp_buf byte 0,0,3,0     ;显示缓存
 bz    word ?           ;位码  ;没用上
 sta   byte 0            ;总状态变量，0普通，1紧急1,2紧急2, 3紧急3，4警告模式
+light_sta byte 0        ;用于普通状态的灯状态变量，00南北绿，01南北黄，10东西绿，11东西黄
 yellow_sta byte 0          ;控制黄灯显示的状态量
 yellow_bit equ 01001000b;黄灯位码      
 yellow_mask byte 10110111b;黄灯掩码
@@ -86,7 +91,6 @@ start:
 a:
     mov  N,0 
 again:
-
     mov   bx,N
     mov   al,DENG[bx]
    
@@ -96,11 +100,6 @@ again:
     and al, yellow_mask
     
  flash:
-    push ax
-    mov al, sta
-    call dispsib
-    call dispcrlf
-    pop ax
     mov   dx,289h    ;c口
     out   dx,al           ;点亮相应的灯
     cmp   al, 0ffh  ;判断是否是结束状态标识
@@ -109,29 +108,72 @@ again:
     ;判断当前状态，只有普通状态显示数码管
     cmp sta, 0
     jne end_tube
-    mov   bl,buf      ;bl为要显示的十位数
-    mov   bh,0
-    mov   al,led[bx]  ;求出对应的led数码
-    mov   dx,288h     ;自8255的A口输出（A口数码管）
-    out   dx,al
-    mov   al,2        ;使左边的数码管亮
-    mov   dx,28ah     ;十位的位码用PB1
-    out   dx,al
+    
+disp_tube:
+    ;buf[0]为十位
+    mov al, buf
+    mov disp_buf + 1, al
+    mov disp_buf  + 3, al
+    mov al, buf + 1
+    mov disp_buf, al
+    mov disp_buf  + 2, al
+    mov cx, 0
+
+
+    cmp light_sta, 00b
+    jne disp_tube2
+    
+    ;南北绿，则东西加6
+    mov bx, offset disp_buf
+    
+    mov al, '&'
+    call dispc
+    mov ax, bx
+    call dispsiw
+    call dispcrlf
+    
+    mov al, 6
+
+    call addbyte
+    
+disp_tube2:
+    cmp light_sta, 10b
+    jne disp_tube1
+    
+    ;东西绿，则南北加6
+    mov bx, offset [disp_buf + 2]
+    
+    mov ax, bx
+    mov al, '*'
+    call dispc
+    call dispsiw
+    call dispcrlf
+    mov al, 6
+    
+    call addbyte
+        
+disp_tube1:
+    mov   dx, 28ah     ;自8255的A口输出（A口数码管）
+    mov   al, 1
+    shl   al, cl        
+    out   dx, al        ;选中当前循环的显示位
+    
+    mov   bx, cx
+    mov   bl, disp_buf[bx]      ;bl为要显示的十位数
+    mov   bh, 0
+    mov   al, led[bx]  ;求出对应的led数码
+    mov   dx, 288h     ;段码PA端口
+    out   dx, al
     call  delay      ;延时
-
+    
     mov   al,0       ;关掉数码管显示（避免重影）
-    mov   dx,28ah
+    mov   dx,288h
     out   dx,al
-
-    mov   bl,buf+1      ;bl为要显示的数（buf的第二位（地址））
-    mov   bh,0
-    mov   al,led[bx]    ;求出对应的led数码
-    mov   dx,288h       ;自8255的A口输出
-    out   dx,al
-    mov   al,1         ;使右边的数码管亮
-    mov   dx,28ah
-    out   dx,al
-    call  delay        ;延时
+    
+    
+    inc cx
+    cmp cx, 4
+    jbe disp_tube1
     
     mov  al,0               ;关掉数码管显示
     mov  dx,28ah
@@ -303,6 +345,10 @@ intp2:    ;al<6
 
 f:
     not flag        ;取反
+    inc light_sta   ;切换灯状态
+    cmp light_sta, 4
+    jb e
+    mov light_sta, 0 
 e:
     
     mov al,20h;CPU执行数据传送指令，将立即数20h传送给al寄存器。
@@ -315,5 +361,28 @@ e:
     pop ax
     iret
 intproc endp
+          
+addbyte proc
+    ;brief 将内存一个逐位表示的十进制数加上一个个位数
+    ;para al为增加的值，bx为起始地址, al \in [0, 9]， 假设每次至多进一位，假设没有增加位数
+    ;ret 计算完成之后进位到的最高位的地址
+    
+    addbyte1:
+    add al, [bx]
+    cmp al, 10
+    jb  addbyte_exit
+    
+    sub al, 10
+    mov [bx], al
+    mov al, 1
+    inc bx
+    jmp addbyte1
+
+addbyte_exit:
+    mov [bx], al
+    ret
+addbyte endp
+
+
 
     end start

@@ -42,11 +42,14 @@ arrows    db  18h, 30h, 60h, 0ffh, 0ffh, 60h, 30h, 18h
 cross     db  81h, 42h, 24h, 18h, 18h, 24h, 42h, 81h
 cross2    db  0c1h, 63h, 36h, 1ch, 38h, 6ch, 0c6h, 83h
 
+lattice_rot db 0 ;记录左旋数，切换时刷新，每次中断+1取模
+lattice_pattern dw arrows ;当前图案
 
 intseg    dw ?           ;存段基地址
 intoff    dw ?           ;存原中断服务程序的偏移地址
 intimr    db ?           ;存中断控制字
 
+cnt dw 0
 
 
 
@@ -55,14 +58,7 @@ MESSAGE DB  '-------------------------------MENU-------------------------------'
 start:
     mov   ax,@data
     mov   ds,ax
-    
-tst:
-    mov al, 0
-    mov ah, 3
-    mov bx, offset arrows
-    call lattice
-    jmp tst
-    
+        
     mov ah,9
     mov dx,offset MESSAGE
     int 21h
@@ -121,6 +117,9 @@ tst:
 a:
     mov  N,0 
 again:
+    inc cnt
+    mov ax, cnt
+    
     mov   bx,N
     mov   al,DENG[bx]
    
@@ -136,68 +135,28 @@ again:
     cmp   al, 0ffh  ;判断是否是结束状态标识
     jz    a   ;返回到初始灯的状态初值
        ;数码管显示
-    ;判断当前状态，只有普通状态显示数码管
+    ;判断当前状态，只有普通状态显示数码管和双色点阵
     cmp sta, 0
-    jne end_tube
+    jne end_disp
     
-disp_tube:
-    ;buf[0]为十位
-    mov al, buf
-    mov disp_buf + 1, al
-    mov disp_buf  + 3, al
-    mov al, buf + 1
-    mov disp_buf, al
-    mov disp_buf  + 2, al
-    mov cx, 0
-
-
-    cmp light_sta, 00b
-    jne disp_tube2
+disp_lattice:
+    ;显示双色点阵
+    cmp light_sta, 00
+    jne disp_cross
+    mov bx, offset arrows
+    mov al, 1
+    mov ah, lattice_rot
+    call lattice
+    jmp end_lattice
+disp_cross:
+    mov bx, offset cross
+    mov al, 0 ;红色
+    mov ah, 0 ;不旋转
+    call lattice
+end_lattice:
     
-    ;南北绿，则东西加6
-    mov bx, offset disp_buf
-    mov al, 6
-
-    call addbyte
-    
-disp_tube2:
-    cmp light_sta, 10b
-    jne disp_tube1
-    
-    ;东西绿，则南北加6
-    mov bx, offset [disp_buf + 2]
-    
-    mov al, 6
-    
-    call addbyte
-        
-disp_tube1:
-    mov   dx, 28ah     ;自8255的A口输出（A口数码管）
-    mov   al, 1
-    shl   al, cl        
-    out   dx, al        ;选中当前循环的显示位
-    
-    mov   bx, cx
-    mov   bl, disp_buf[bx]      ;bl为要显示的十位数
-    mov   bh, 0
-    mov   al, led[bx]  ;求出对应的led数码
-    mov   dx, 288h     ;段码PA端口
-    out   dx, al
-    call  delay      ;延时
-    
-    mov   al,0       ;关掉数码管显示（避免重影）
-    mov   dx,288h
-    out   dx,al
-    
-    
-    inc cx
-    cmp cx, 4
-    jbe disp_tube1
-    
-    mov  al,0               ;关掉数码管显示
-    mov  dx,28ah
-    out  dx,al
-end_tube:
+    call tube
+end_disp:
     
     mov  ah,06h   ;控制台输入输出
     mov dl,0ffh  ;选择输入
@@ -263,7 +222,7 @@ ans3:;东西绿，南北红
     mov dx,289H
     mov al,84h
     out dx,al
-   mov  ah,06h   ;KZTSRSC
+    mov  ah,06h   ;KZTSRSC
     mov dl,0ffh
     int  21h
     cmp al,32   ;空格键
@@ -320,8 +279,17 @@ intproc    proc
     xor yellow_mask, yellow_bit
     ;重置蜂鸣器状态
     mov buzzer, 0
+    
+    ;旋转数+1
+    inc lattice_rot
+    cmp lattice_rot, 8
+    jl lattice_rot_else
+    mov lattice_rot, 0
+lattice_rot_else:    
+
     cmp flag,0;判断是否是绿灯
     jnz yellow;flag!=0,转去黄灯
+    
     mov al,buf+1    ;flag=0,绿灯，赋值个位
     dec al;个位减一
     cmp al,9;与9比较
@@ -365,6 +333,7 @@ intp2:    ;al<6
     mov buf+1,09h ;个位赋值9（绿灯倒计时）
 
 f:
+    mov lattice_rot, 0
     not flag        ;取反
     
     ;切换到黄灯时打开蜂鸣器
@@ -462,5 +431,76 @@ lattice_again:
     ret
 
 lattice endp
+
+tube proc
+    ;根据buff和light_sta显示数码管
+    push ax
+    push dx
+    push cx
+disp_tube:
+    ;buf[0]为十位
+    mov al, buf
+    mov disp_buf + 1, al
+    mov disp_buf  + 3, al
+    mov al, buf + 1
+    mov disp_buf, al
+    mov disp_buf  + 2, al
+    mov cx, 0
+
+
+    cmp light_sta, 00b
+    jne disp_tube2
+    
+    ;南北绿，则东西加6
+    mov bx, offset disp_buf
+    mov al, 6
+
+    call addbyte
+    
+disp_tube2:
+    cmp light_sta, 10b
+    jne disp_tube1
+    
+    ;东西绿，则南北加6
+    mov bx, offset [disp_buf + 2]
+    
+    mov al, 6
+    
+    call addbyte
+        
+disp_tube1:
+    mov   dx, 28ah     ;自8255的A口输出（A口数码管）
+    mov   al, 1
+    shl   al, cl        
+    out   dx, al        ;选中当前循环的显示位
+    
+    mov   bx, cx
+    mov   bl, disp_buf[bx]      ;bl为要显示的十位数
+    mov   bh, 0
+    mov   al, led[bx]  ;求出对应的led数码
+    mov   dx, 288h     ;段码PA端口
+    out   dx, al
+    call  delay      ;延时
+    
+    mov   al,0       ;关掉数码管显示（避免重影）
+    mov   dx,288h
+    out   dx,al
+    
+    
+    inc cx
+    cmp cx, 4
+    jbe disp_tube1
+    
+    mov  al,0               ;关掉数码管显示
+    mov  dx,28ah
+    out  dx,al
+    
+end_tube:
+
+    pop cx
+    pop dx
+    pop ax
+    ret
+tube endp
 
     end start

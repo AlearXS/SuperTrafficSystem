@@ -6,7 +6,16 @@ include io.inc
 ; PB 7-2 LED 0 蜂鸣器
 ; PC 上半数字键盘的列 下半位码
 time_green equ 30
+time_yellow equ 6
 
+port_lattice_h  equ 290h
+port_lattice_r  equ 298h
+port_lattice_g  equ 2a0h
+port8255        equ 288h ;此常量暂未生效
+port8555a       equ port8255
+port8555b       equ port8255 + 1
+port8555c       equ port8255 + 2
+port8555k       equ port8255 + 3
 
 DENG   db  30h,50h,10h,50h,10h,50h,10h     ;六个灯P7~P5:L7~L5
                     ;P4~P2:L2~L0
@@ -25,16 +34,35 @@ yellow_bit equ 01001000b;黄灯位码
 yellow_mask byte 10110111b;黄灯掩码
 N      word 0          ;控制灯显示
 flag   byte 0             ;存放灯状态,有绿灯为0，黄灯非0
+
 buzzer byte 0            ;控制蜂鸣器，切换到黄灯时会置1，下次一秒中断时置0
+
+;双色点阵用字模，列表示，右起
+arrows    db  18h, 30h, 60h, 0ffh, 0ffh, 60h, 30h, 18h
+cross     db  81h, 42h, 24h, 18h, 18h, 24h, 42h, 81h
+cross2    db  0c1h, 63h, 36h, 1ch, 38h, 6ch, 0c6h, 83h
+
+
 intseg    dw ?           ;存段基地址
 intoff    dw ?           ;存原中断服务程序的偏移地址
 intimr    db ?           ;存中断控制字
+
+
+
 
 MESSAGE DB  '-------------------------------MENU-------------------------------',13,10, '1.Press any key to start',13,10,'2.Press the enter button to enter an emergency state',13,10,'3.Press"1"to maintain control in the north-south direction',13,10,'4.Press"2"to maintain control in the east-west direction ',13,10,'5.Press the Space bar to end the emergency state ',13,10,'-----------------------------------------------------------------',13,10,'$'
 .code  
 start:
     mov   ax,@data
     mov   ds,ax
+    
+tst:
+    mov al, 0
+    mov ah, 3
+    mov bx, offset arrows
+    call lattice
+    jmp tst
+    
     mov ah,9
     mov dx,offset MESSAGE
     int 21h
@@ -383,6 +411,56 @@ addbyte_exit:
     ret
 addbyte endp
 
+lattice proc
+    ;用于显示双色点阵
+    ;param bx: 指向字模起始地址, al: 灯的颜色，0红色，非0绿色, ah: 左旋位数
+    ;ret void
+    push cx
+    push dx
+    push si
+    
+    mov cl, ah
+    test al, 0ffh
+    jnz lattice_else
+    mov si, port_lattice_r
+    jmp lattice_fi
+lattice_else:
+    mov si, port_lattice_g
+lattice_fi:
 
+    mov ah, 1    
+    
+lattice_again:
+    mov dx, port_lattice_h
+    mov al, [bx]
+    rol al, cl
+    out dx, al
+    
+    mov dx, si
+    mov al, ah
+    out dx, al
+    call delay
+    mov al, 0
+    out dx, al
+    inc bx
+    rol ah, 1
+    test ah, 1 ;逐位位移
+    jz lattice_again
+    
+    mov dx, port_lattice_h
+    mov al, 0
+    out dx, al
+    mov dx, port_lattice_r
+    out dx, al
+    mov dx, port_lattice_g
+    out dx, al
+    
+    pop si
+    pop dx       
+    pop cx
+
+    ret
+
+lattice endp
 
     end start

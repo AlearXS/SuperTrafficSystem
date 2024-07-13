@@ -9,7 +9,12 @@ DATA      SEGMENT
 MESS      DB  'Strike any key,return to DOS!',0AH,0DH,'$'
 min1      DB  00h,01h,02h,03h,04h,05h,06h,07h
 count     db  0
-BUFF      DB  44h,54h,54h,7fh,54h,0dch,44h,24h
+;BUFF      DB  44h,54h,54h,7fh,54h,0dch,44h,24h
+arrows    db  18h, 30h, 60h, 0ffh, 0ffh, 60h, 30h, 18h
+cross     db  81h, 42h, 24h, 18h, 18h, 24h, 42h, 81h
+cross2    db  0c1h, 63h, 36h, 1ch, 38h, 6ch, 0c6h, 83h
+buff      db  0aah dup(8)
+
 DATA      ENDS
 ;-----------------------------------------------------------
 CODE      SEGMENT
@@ -31,12 +36,12 @@ next:     mov    al,[si]
       xlat                             ;得到第一行码
       mov    dx,proth
       out    dx,al
-      mov    al,ah
+      mov    al,ah  
       mov    dx,protlr
       out    dx,al                       ;显示第一行红
       mov al,0
       out dx,al
-      shl    ah,01
+      shl    ah,01                                
       inc    si
       push    cx
       mov    cx,0ffh;ffh
@@ -44,7 +49,7 @@ delay2:      loop  delay2                       ;延时
       pop    cx
       loop    next
       pop    cx
-      call    delay
+      call    delay  
       loop    d2
       mov    al,00
       mov    dx,protlr

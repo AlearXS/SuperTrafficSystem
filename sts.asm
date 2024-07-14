@@ -2,9 +2,12 @@ include io.inc
 .model small
 .stack
 .data
+;接线说明
+;端口地址参考宏部分
 ; PA 段码
 ; PB 7-2 LED 0 蜂鸣器
 ; PC 上半数字键盘的列 下半位码
+;键盘行0接地
 time_green equ 30
 time_yellow equ 6
 
@@ -12,10 +15,10 @@ port_lattice_h  equ 290h
 port_lattice_r  equ 298h
 port_lattice_g  equ 2a0h
 port8255        equ 288h ;此常量暂未生效
-port8555a       equ port8255
-port8555b       equ port8255 + 1
-port8555c       equ port8255 + 2
-port8555k       equ port8255 + 3
+port8255a       equ port8255
+port8255b       equ port8255 + 1
+port8255c       equ port8255 + 2
+port8255k       equ port8255 + 3
 
 DENG   db  30h,50h,10h,50h,10h,50h,10h     ;六个灯P7~P5:L7~L5
                     ;P4~P2:L2~L0
@@ -45,6 +48,8 @@ cross2    db  0c1h, 63h, 36h, 1ch, 38h, 6ch, 0c6h, 83h
 lattice_rot db 0 ;记录左旋数，切换时刷新，每次中断+1取模
 lattice_pattern dw arrows ;当前图案
 
+key_in db 0
+
 intseg    dw ?           ;存段基地址
 intoff    dw ?           ;存原中断服务程序的偏移地址
 intimr    db ?           ;存中断控制字
@@ -58,6 +63,7 @@ MESSAGE DB  '-------------------------------MENU-------------------------------'
 start:
     mov   ax,@data
     mov   ds,ax
+    
         
     mov ah,9
     mov dx,offset MESSAGE
@@ -158,27 +164,35 @@ end_lattice:
     call tube
 end_disp:
     
-    mov  ah,06h   ;控制台输入输出
-    mov dl,0ffh  ;选择输入
-    int  21h
-    jmp st1 
+    call key
+    mov key_in, al
+    call dispbb
+    call dispcrlf
+    
+    cmp sta, 0
+    jmp st1 ;普通状态下的键盘逻辑
+    
+    ;非普通状态下，按任意键退出到普通模式
+    cmp al, 11110000b
+    jne to_again
+    mov sta, 0
 to_again:
     jmp again
 
 st1:
-    cmp al,13
+    cmp al,01110000b   ;"0"键
     jne  st2  ;zf=0跳转       ;enter键按下红灯
     jmp ans1
 
 
-st2: cmp al,49    ;"1"键
+st2: cmp al,10110000b ;"1"键
     jne st3
     jmp ans2
-st3: cmp al,50     ;"2"键
+st3: cmp al,11010000b ;"2"键
      jne st4
      jmp ans3
 
-st4: cmp al,51     ;"3"键
+st4: cmp al,11100000b ;"3"键
      jne st5
      jmp ans4     
      
@@ -193,11 +207,9 @@ ans1:;全红灯
     mov al,90h
     out dx,al
     
-    mov  ah,06h   
-    mov dl,0ffh
-    int  21h
-    cmp al,32
-    jne  ans1
+    call key
+    cmp al, 0f0h
+    je ans1
     mov sta, 0
     jmp  again
 
@@ -208,11 +220,10 @@ ans2:;东西红，南北绿
     mov dx,289H
     mov al,30h
     out dx,al
-   mov  ah,06h   ;KZTSRSC
-    mov dl,0ffh
-    int  21h
-    cmp al,32
-    jne  ans2
+    
+    call key
+    cmp al, 0f0h
+    je ans2
     mov sta, 0 ;回到普通状态
     jmp  again
   
@@ -222,16 +233,13 @@ ans3:;东西绿，南北红
     mov dx,289H
     mov al,84h
     out dx,al
-    mov  ah,06h   ;KZTSRSC
-    mov dl,0ffh
-    int  21h
-    cmp al,32   ;空格键
+    
+    call key
+    cmp al, 0f0h
+    je ans3
     mov sta, 0 ;回到普通状态
-
-    jne  ans3
     jmp  again
    
-    jmp ans3
 ans4:;警告模式，黄灯闪烁，蜂鸣器关闭
     mov sta, 4 ;设置状态变量
     mov al, 06h
@@ -274,12 +282,16 @@ intproc    proc
     ;
     mov ax,@data
     mov ds,ax
+    
     ;修改黄灯状态
     xor yellow_sta, 1
     xor yellow_mask, yellow_bit
     ;重置蜂鸣器状态
     mov buzzer, 0
     
+    cmp sta, 0
+    jne to_e ;只有在普通状态下才会修改状态
+        
     ;旋转数+1
     inc lattice_rot
     cmp lattice_rot, 8
@@ -331,6 +343,10 @@ intp2:    ;al<6
     jz  f;为0则跳转（倒计时结束，需要换标志位）
     mov buf,02h;flag不为0,黄灯结束，十位赋值2
     mov buf+1,09h ;个位赋值9（绿灯倒计时）
+
+    jmp f
+to_e:
+    jmp e
 
 f:
     mov lattice_rot, 0
@@ -502,5 +518,33 @@ end_tube:
     pop ax
     ret
 tube endp
+
+key proc
+    ;扫描键，无键按下时直接退出，有键按下则阻塞至键松开
+    ;ret key_in, al 读入的键值                                                                                                                                                        
+    ;register: ax, dx
+port_key equ port8255c
+
+        push dx       
+        mov dx,port_key
+        in al,dx                    ;读行扫描值
+        mov key_in, al
+        and al,0f0h
+        cmp al,0f0h
+        je key_ret                                          ;未发现有键按下则返回
+        
+key_waitup:
+        mov dx,port_key
+        in al,dx           ;读行扫描值
+        and al,0f0h
+        cmp al,0f0h
+        jne key_waitup     ;按键未抬起转
+        call delay         ;delay for amoment
+key_ret:
+        mov al, key_in
+        pop dx
+        ret
+key endp
+
 
     end start

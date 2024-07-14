@@ -43,7 +43,7 @@ flag        byte 0              ;存放灯状态,有绿灯为0，黄灯非0
 buzzer      byte 0            ;控制蜂鸣器，切换到黄灯时会置1，下次一秒中断时置0
 
 ;双色点阵用字模，列表示，右起
-arrows    db  18h, 30h, 60h, 0ffh, 0ffh, 60h, 30h, 18h
+arrows    db  18h, 30h, 60h, 0feh, 0feh, 60h, 30h, 18h
 cross     db  81h, 42h, 24h, 18h, 18h, 24h, 42h, 81h
 cross2    db  0c1h, 63h, 36h, 1ch, 38h, 6ch, 0c6h, 83h
 
@@ -413,6 +413,8 @@ lattice_again:
     mov dx, si
     mov al, ah
     out dx, al
+    call delay
+    call delay4
     call delay
     mov al, 0
     out dx, al

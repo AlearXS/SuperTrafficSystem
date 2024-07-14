@@ -58,7 +58,7 @@ cnt dw 0
 
 
 
-MESSAGE DB  '-------------------------------MENU-------------------------------',13,10, '1.Press any key to start',13,10,'2.Press the enter button to enter an emergency state',13,10,'3.Press"1"to maintain control in the north-south direction',13,10,'4.Press"2"to maintain control in the east-west direction ',13,10,'5.Press the Space bar to end the emergency state ',13,10,'-----------------------------------------------------------------',13,10,'$'
+MESSAGE DB  '-------------------------------MENU-------------------------------',13,10, '1.Press any key to start',13,10,'2.Press "C" to enter an emergency state',13,10,'3.Press "D" to maintain control in the north-south direction',13,10,'4.Press "E" to maintain control in the east-west direction ',13,10,'5.Press "F" to enter an warning state',13,10,'6.Press any key to end the emergency state ',13,10,'-----------------------------------------------------------------',13,10,'$'
 .code  
 start:
     mov   ax,@data
@@ -166,8 +166,6 @@ end_disp:
     
     call key
     mov key_in, al
-    call dispbb
-    call dispcrlf
     
     cmp sta, 0
     je st1 ;ÆÕÍ¨×´Ì¬ÏÂµÄ¼üÅÌÂß¼­

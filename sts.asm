@@ -461,27 +461,38 @@ disp_tube:
     mov disp_buf, al
     mov disp_buf  + 2, al
     mov cx, 0
-
-
+    
     cmp light_sta, 00b
-    jne disp_tube2
-    
-    ;南北绿，则东西加6
-    mov bx, offset disp_buf
-    mov al, 6
-
-    call addbyte
-    
-disp_tube2:
+    je disp_tube3
     cmp light_sta, 10b
+    je disp_tube2
+    ;此时状态只可能是黄灯，在计时器为0时进行额外判断
+    mov ax, word ptr buf
+    cmp ax, 0
     jne disp_tube1
     
-    ;东西绿，则南北加6
+    cmp light_sta, 01b
+    je disp_tube3
+    cmp light_sta, 11b
+    je disp_tube2
+    jmp disp_tube1
+    
+    
+disp_tube3:
+    ;南北绿，或南北黄且buff=0，则东西加6
+    mov bx, offset disp_buf
+    mov al, 7
+
+    call addbyte
+    jmp disp_tube1
+disp_tube2:    
+    ;东西绿，或东西黄且buff=0，则南北加6
     mov bx, offset [disp_buf + 2]
     
-    mov al, 6
+    mov al, 7
     
     call addbyte
+    jmp disp_tube1
         
 disp_tube1:
     mov   dx, 28ah     ;自8255的A口输出（A口数码管）

@@ -20,14 +20,14 @@ port8255b       equ port8255 + 1
 port8255c       equ port8255 + 2
 port8255k       equ port8255 + 3
 
-DENG        db  30h,50h,10h,50h,10h,50h,10h     ;六个灯P7~P5:L7~L5
+light        db  30h,50h,10h,50h,10h,50h,10h     ;六个灯P7~P5:L7~L5
                     ;P4~P2:L2~L0
             db  84h,88h,80h,88h,80h,88h,80h     ;灯的状态数据
             db  0ffh                            ;结束标志
 
-DENG1       db   90H;出现故障两个方向红灯全亮  
+light1       db   90H;出现故障两个方向红灯全亮  
 led         byte 3fh,06h,5bh,4fh,66h,6dh,7dh,07h,7fh,6fh    ;段码
-ledDENG     byte 40h;0100 0000;hgfedcba,40是-
+ledlight     byte 40h;0100 0000;hgfedcba,40是-
 buf         byte 3,0            ;存放要显示的十位和个位
 disp_buf    byte 0,0,3,0        ;显示缓存
 
@@ -37,10 +37,10 @@ yellow_sta  byte 0              ;控制黄灯显示的状态量
 yellow_bit  equ 01001000b       ;黄灯位码      
 yellow_mask byte 10110111b      ;黄灯掩码
 
-N           word 0              ;控制灯显示
-flag        byte 0              ;存放灯状态,有绿灯为0，黄灯非0
+light_index word 0              ;控制灯显示
+flag        byte 0              ;存放灯状态,绿灯为0，黄灯非0
 
-buzzer      byte 0            ;控制蜂鸣器，切换到黄灯时会置1，下次一秒中断时置0
+buzzer      byte 0              ;控制蜂鸣器，切换到黄灯时会置1，下次一秒中断时置0
 
 ;双色点阵用字模，列表示，右起
 arrows    db  18h, 30h, 60h, 0feh, 0feh, 60h, 30h, 18h
@@ -128,11 +128,11 @@ start:
     sti
     
 a:
-    mov  N,0 
+    mov  light_index ,0 
 again:
     
-    mov   bx,N
-    mov   al,DENG[bx]
+    mov   bx,light_index 
+    mov   al,light[bx]
    
     cmp sta, 4
     jne flash
@@ -306,7 +306,7 @@ lattice_rot_fi:
     jmp  intp;跳转10位控制
 
 yellow:
-    inc N;N+1,控制下一个灯状态显示
+    inc light_index ;light_index +1,控制下一个灯状态显示
     mov al,buf+1;显示个位
     dec al;减1
     cmp al,6
@@ -414,7 +414,7 @@ lattice_again:
     mov al, ah
     out dx, al
     call delay
-    call delay4
+    call delay
     call delay
     mov al, 0
     out dx, al
@@ -471,7 +471,7 @@ disp_tube:
     
     
 disp_tube3:
-    ;南北绿，或南北黄且buff=0，则东西加6
+    ;南北绿，或南北黄且buff=0，则东西加7
     mov bx, offset disp_buf
     mov al, 7
 

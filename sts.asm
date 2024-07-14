@@ -170,11 +170,11 @@ end_disp:
     call dispcrlf
     
     cmp sta, 0
-    jmp st1 ;普通状态下的键盘逻辑
+    je st1 ;普通状态下的键盘逻辑
     
     ;非普通状态下，按任意键退出到普通模式
     cmp al, 11110000b
-    jne to_again
+    je again
     mov sta, 0
 to_again:
     jmp again
@@ -183,7 +183,6 @@ st1:
     cmp al,01110000b   ;"0"键
     jne  st2  ;zf=0跳转       ;enter键按下红灯
     jmp ans1
-
 
 st2: cmp al,10110000b ;"1"键
     jne st3

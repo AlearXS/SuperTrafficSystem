@@ -9,43 +9,45 @@ include io.inc
 ; PC 上半数字键盘的列 下半位码
 ;键盘行0接地
 time_green equ 30
-time_yellow equ 6
+time_yellow equ 7
 
 port_lattice_h  equ 290h
 port_lattice_r  equ 298h
 port_lattice_g  equ 2a0h
-port8255        equ 288h ;此常量暂未生效
+port8255        equ 288h 
 port8255a       equ port8255
 port8255b       equ port8255 + 1
 port8255c       equ port8255 + 2
 port8255k       equ port8255 + 3
 
-DENG   db  30h,50h,10h,50h,10h,50h,10h     ;六个灯P7~P5:L7~L5
+DENG        db  30h,50h,10h,50h,10h,50h,10h     ;六个灯P7~P5:L7~L5
                     ;P4~P2:L2~L0
-       db  84h,88h,80h,88h,80h,88h,80h     ;灯的状态数据
-       db  0ffh                          ;结束标志
-DENG1   db   90H;出现故障两个方向红灯全亮  
-led    byte 3fh,06h,5bh,4fh,66h,6dh,7dh,07h,7fh,6fh    ;段码
-ledDENG byte 40h;0100 0000;hgfedcba,40是-
-buf    byte 3,0           ;存放要显示的十位和个位
-disp_buf byte 0,0,3,0     ;显示缓存
-bz    word ?           ;位码  ;没用上
-sta   byte 0            ;总状态变量，0普通，1紧急1,2紧急2, 3紧急3，4警告模式
-light_sta byte 0        ;用于普通状态的灯状态变量，00南北绿，01南北黄，10东西绿，11东西黄
-yellow_sta byte 0          ;控制黄灯显示的状态量
-yellow_bit equ 01001000b;黄灯位码      
-yellow_mask byte 10110111b;黄灯掩码
-N      word 0          ;控制灯显示
-flag   byte 0             ;存放灯状态,有绿灯为0，黄灯非0
+            db  84h,88h,80h,88h,80h,88h,80h     ;灯的状态数据
+            db  0ffh                            ;结束标志
 
-buzzer byte 0            ;控制蜂鸣器，切换到黄灯时会置1，下次一秒中断时置0
+DENG1       db   90H;出现故障两个方向红灯全亮  
+led         byte 3fh,06h,5bh,4fh,66h,6dh,7dh,07h,7fh,6fh    ;段码
+ledDENG     byte 40h;0100 0000;hgfedcba,40是-
+buf         byte 3,0            ;存放要显示的十位和个位
+disp_buf    byte 0,0,3,0        ;显示缓存
+
+sta         byte 0              ;总状态变量，0普通，1紧急1,2紧急2, 3紧急3，4警告模式
+light_sta   byte 0              ;用于普通状态的灯状态变量，00南北绿，01南北黄，10东西绿，11东西黄
+yellow_sta  byte 0              ;控制黄灯显示的状态量
+yellow_bit  equ 01001000b       ;黄灯位码      
+yellow_mask byte 10110111b      ;黄灯掩码
+
+N           word 0              ;控制灯显示
+flag        byte 0              ;存放灯状态,有绿灯为0，黄灯非0
+
+buzzer      byte 0            ;控制蜂鸣器，切换到黄灯时会置1，下次一秒中断时置0
 
 ;双色点阵用字模，列表示，右起
 arrows    db  18h, 30h, 60h, 0ffh, 0ffh, 60h, 30h, 18h
 cross     db  81h, 42h, 24h, 18h, 18h, 24h, 42h, 81h
 cross2    db  0c1h, 63h, 36h, 1ch, 38h, 6ch, 0c6h, 83h
 
-lattice_rot db 0 ;记录左旋数，切换时刷新，每次中断+1取模
+lattice_rot     db 0 ;记录左旋数，切换时刷新，每次中断+1取模
 lattice_pattern dw arrows ;当前图案
 
 key_in db 0
@@ -54,11 +56,16 @@ intseg    dw ?           ;存段基地址
 intoff    dw ?           ;存原中断服务程序的偏移地址
 intimr    db ?           ;存中断控制字
 
-cnt dw 0
 
 
 
-MESSAGE DB  '-------------------------------MENU-------------------------------',13,10, '1.Press any key to start',13,10,'2.Press "C" to enter an emergency state',13,10,'3.Press "D" to maintain control in the north-south direction',13,10,'4.Press "E" to maintain control in the east-west direction ',13,10,'5.Press "F" to enter an warning state',13,10,'6.Press any key to end the emergency state ',13,10,'-----------------------------------------------------------------',13,10,'$'
+MESSAGE DB  '-------------------------------MENU-------------------------------',13,10
+        DB  '1.Press any key to start',13,10,'2.Press "C" to enter an emergency state',13,10
+        DB  '3.Press "D" to maintain control in the north-south direction',13,10
+        DB  '4.Press "E" to maintain control in the east-west direction ',13,10
+        DB   '5.Press "F" to enter an warning state',13,10
+        DB   '6.Press any key to end the emergency state ',13,10
+        DB   '-----------------------------------------------------------------',13,10,'$'
 .code  
 start:
     mov   ax,@data
@@ -72,7 +79,7 @@ start:
     int 21h
 
     mov   dx,28bh
-    mov   al,88h                ;将8255设为A和B口输出
+    mov   al,88h                ;将8255设为A和B口输出, C口上半输入，下半输出
     out   dx,al           
  
     mov   al,0              ;关掉数码管显示
@@ -123,8 +130,6 @@ start:
 a:
     mov  N,0 
 again:
-    inc cnt
-    mov ax, cnt
     
     mov   bx,N
     mov   al,DENG[bx]
@@ -135,18 +140,18 @@ again:
     and al, yellow_mask
     
  flash:
-    mov   dx,289h    ;c口
+    mov   dx,289h    ;B口
     or    al, buzzer      ;或上蜂鸣器状态
     out   dx,al           ;点亮相应的灯
     cmp   al, 0ffh  ;判断是否是结束状态标识
     jz    a   ;返回到初始灯的状态初值
-       ;数码管显示
+    
     ;判断当前状态，只有普通状态显示数码管和双色点阵
     cmp sta, 0
     jne end_disp
     
-disp_lattice:
     ;显示双色点阵
+disp_lattice:
     cmp light_sta, 00
     jne disp_cross
     mov bx, offset arrows
@@ -161,6 +166,7 @@ disp_cross:
     call lattice
 end_lattice:
     
+    ;数码管显示
     call tube
 end_disp:
     
@@ -177,27 +183,23 @@ end_disp:
 to_again:
     jmp again
 
+    ;普通状态的键盘逻辑
 st1:
-    cmp al,01110000b   ;"0"键
-    jne  st2  ;zf=0跳转       ;enter键按下红灯
+    cmp al,01110000b   ;"C"键
+    jne  st2   
     jmp ans1
 
-st2: cmp al,10110000b ;"1"键
+st2: cmp al,10110000b ;"D"键
     jne st3
     jmp ans2
-st3: cmp al,11010000b ;"2"键
+st3: cmp al,11010000b ;"E"键
      jne st4
      jmp ans3
 
-st4: cmp al,11100000b ;"3"键
-     jne st5
-     jmp ans4     
+st4: cmp al,11100000b ;"F"键
+     jne to_again
+     jmp ans4 
      
-st5:
-    cmp al, 32
-    jne to_again
-    mov sta, 0 ;回到普通状态
-    jmp again
 ans1:;全红灯
     mov sta, 1 ;设置状态变量
     mov dx,289H
@@ -238,12 +240,7 @@ ans3:;东西绿，南北红
     jmp  again
    
 ans4:;警告模式，黄灯闪烁，蜂鸣器关闭
-    mov sta, 4 ;设置状态变量
-    mov al, 06h
-    mov dl, 0ffh; dos功能调用，getc
-    cmp al, 32
-    jmp again
-    
+    mov sta, 4 ;设置状态变量    
     jmp again 
                       
     ;中断向量设置
@@ -263,6 +260,7 @@ ans4:;警告模式，黄灯闪烁，蜂鸣器关闭
     sti
 
 .exit
+
 delay    proc      ;延时  为了保证能个位十位同时显示
     push cx
     mov cx,3000
@@ -270,7 +268,8 @@ delay1:    loop delay1
     pop cx
     ret
 delay    endp
-;中断延时子程序
+
+;中断子程序
 intproc    proc
     sti
     push ax
@@ -292,9 +291,9 @@ intproc    proc
     ;旋转数+1
     inc lattice_rot
     cmp lattice_rot, 8
-    jl lattice_rot_else
+    jl lattice_rot_fi
     mov lattice_rot, 0
-lattice_rot_else:    
+lattice_rot_fi:    
 
     cmp flag,0;判断是否是绿灯
     jnz yellow;flag!=0,转去黄灯
@@ -309,12 +308,9 @@ lattice_rot_else:
 yellow:
     inc N;N+1,控制下一个灯状态显示
     mov al,buf+1;显示个位
-    dec al;递减
+    dec al;减1
     cmp al,6
-    ;设置标志位CF,ZF
-    jb  intp2;jb，判断两个无符号数
-    ;jb:CF=1,ZF=0,即al<6跳转
-    ;ja:CF=0,ZF=0,即al>6跳转
+    jb  intp2;jb:CF=1,ZF=0,即al<6跳转
     mov al,6;重新赋值6
     jmp intp2;执行数码管倒计时
 
@@ -331,7 +327,6 @@ intp1:
     mov buf,ah    
 intp2:    ;al<6
     mov buf+1,al;数字给个位赋值
- 
     mov al,buf+1;
     mov ah,buf;十位赋值
     cmp ax,0
@@ -339,7 +334,7 @@ intp2:    ;al<6
     cmp flag,0;判断flag是否为0
     jz  f;为0则跳转（倒计时结束，需要换标志位）
     mov buf,02h;flag不为0,黄灯结束，十位赋值2
-    mov buf+1,09h ;个位赋值9（绿灯倒计时）
+    mov buf+1,09h ;个位赋值9（绿灯倒 时）
 
     jmp f
 to_e:
@@ -360,12 +355,9 @@ f2:
     mov light_sta, 0 
 e:
     
-    mov al,20h;CPU执行数据传送指令，将立即数20h传送给al寄存器。
-    out 20h,al;CPU执行IO的写指令，根据提供的8259的偶地址端口的
-    ;地址20h，将al寄存器的数据，写到操作命令字OCW2中。
-    ;这是由于D4D3为00，决定了访问的是OCW2。根据OCW2的格式，
-    ;由于D5为1，8259产生EOI中断结束命令，
-    ;使当前服务寄存器ISR对应的D7这一位清零。
+    mov al,20h;中断结束
+    out 20h,al
+ 
     pop ds
     pop dx
     pop ax
